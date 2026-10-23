@@ -39,7 +39,7 @@ function abrirSSE(req, res) {
     'X-Accel-Buffering': 'no',
   });
   res.flushHeaders();
-  const latido = setInterval(() => res.write(': latido\n\n'), 25000);
+  const latido = setInterval(() => res.write(': latido\n\n'), 5000);
   res.on('close', () => clearInterval(latido));
 }
 const enviar = (res, evento, datos) =>
@@ -95,6 +95,7 @@ app.get('/api/eventos/:id', (req, res) => {
   abrirSSE(req, res);
 
   if (!clientes.has(sol.id)) clientes.set(sol.id, new Set());
+  res.cid = String(req.query.cid || '');
   clientes.get(sol.id).add(res);
   enviar(res, 'chat', estadoChat(sol));
   aPanel('actualizada', sol);
@@ -103,6 +104,13 @@ app.get('/api/eventos/:id', (req, res) => {
     clientes.get(sol.id)?.delete(res);
     if (solicitudes.get(sol.id) === sol) aPanel('actualizada', sol);
   });
+});
+
+// El cliente avisa al cerrar/ocultar la página (sendBeacon) para marcarlo offline al instante
+app.post('/api/desconectar/:id', (req, res) => {
+  const cid = String(req.query.cid || '');
+  if (cid) (clientes.get(idDe(req.params.id)) || new Set()).forEach((r) => { if (r.cid === cid) r.end(); });
+  res.sendStatus(204);
 });
 
 // 3) El cliente escribe en el chat (solo si el admin lo permitió)
