@@ -40,7 +40,7 @@ function abrirSSE(req, res) {
   });
   res.flushHeaders();
   const latido = setInterval(() => res.write(': latido\n\n'), 25000);
-  req.on('close', () => clearInterval(latido));
+  res.on('close', () => clearInterval(latido));
 }
 const enviar = (res, evento, datos) =>
   res.write(`event: ${evento}\ndata: ${JSON.stringify(datos)}\n\n`);
@@ -79,7 +79,9 @@ app.post('/api/solicitudes', (req, res) => {
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Email inválido' });
 
   if (!solicitudes.has(email)) {
-    const sol = { id: email, email, chatAbierto: false, puedeEscribir: false, mensajes: [], creada: Date.now() };
+    const sol = { id: email, email, chatAbierto: false, puedeEscribir: false, mensajes: [], creada: Date.now(),
+      // Online = hay al menos una conexión SSE abierta desde wait.html
+      get online() { return (clientes.get(this.id)?.size || 0) > 0; } };
     solicitudes.set(email, sol);
     aPanel('nueva', sol);
   }
@@ -95,8 +97,12 @@ app.get('/api/eventos/:id', (req, res) => {
   if (!clientes.has(sol.id)) clientes.set(sol.id, new Set());
   clientes.get(sol.id).add(res);
   enviar(res, 'chat', estadoChat(sol));
+  aPanel('actualizada', sol);
 
-  req.on('close', () => clientes.get(sol.id)?.delete(res));
+  res.on('close', () => {
+    clientes.get(sol.id)?.delete(res);
+    if (solicitudes.get(sol.id) === sol) aPanel('actualizada', sol);
+  });
 });
 
 // 3) El cliente escribe en el chat (solo si el admin lo permitió)
@@ -121,7 +127,7 @@ app.get('/api/panel/solicitudes', auth, (req, res) =>
 app.get('/api/panel/eventos', auth, (req, res) => {
   abrirSSE(req, res);
   paneles.add(res);
-  req.on('close', () => paneles.delete(res));
+  res.on('close', () => paneles.delete(res));
 });
 
 // Eliminar solicitud
